@@ -6,14 +6,16 @@ namespace Riddler\Uxid\Tests;
 
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\TestCase;
+use Riddler\Uxid\DecodeError;
 use Riddler\Uxid\ErrorCode;
 use Riddler\Uxid\LetterCase;
 use Riddler\Uxid\Size;
 
 /**
  * Pins the backed values of the public enums: the error codes are the closed
- * set of generation error names the wire format and its corpus give, and the
- * size and case values are the corpus's spellings.
+ * set of generation error names the wire format and its corpus give, the
+ * decode errors its closed set of refusal reasons in their refusal order,
+ * and the size and case values are the corpus's spellings.
  */
 #[CoversNothing]
 final class EnumsTest extends TestCase
@@ -31,6 +33,15 @@ final class EnumsTest extends TestCase
                 'rand_with_monotonic',
             ],
             array_map(static fn(ErrorCode $code): string => $code->value, ErrorCode::cases()),
+        );
+    }
+
+    # sabotage: change DecodeError::Empty's value to 'blank' -> assertSame failed: index 0 was 'blank', not 'empty'
+    public function testDecodeErrorsAreTheClosedSetOfRefusalReasonsInOrder(): void
+    {
+        self::assertSame(
+            ['empty', 'invalid_length', 'invalid_character'],
+            array_map(static fn(DecodeError $error): string => $error->value, DecodeError::cases()),
         );
     }
 

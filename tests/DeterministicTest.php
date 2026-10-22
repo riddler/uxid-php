@@ -91,25 +91,33 @@ final class DeterministicTest extends TestCase
     }
 
     # sabotage: draw one byte from the byte source in the from path of generate -> assertSame failed: 1 is not identical to 0
-    public function testTheTimeFieldsAndTheByteSourceAreNotReadWithFrom(): void
+    # sabotage: check the time range in generate above the from branch -> assertNull failed: generate refused the time with from ('The time must be from 0 to 2^48 - 1 milliseconds since the Unix epoch, got -1.' is not null)
+    public function testTheTimeArgumentsAndTheByteSourceAreNotReadWithFrom(): void
     {
         $plain = Uxid::generate(prefix: 'usr', size: Size::Medium, from: 'alice@example.com');
         $calls = 0;
+        $id = null;
+        $refusal = null;
 
-        $id = Uxid::generate(
-            prefix: 'usr',
-            size: Size::Medium,
-            randSize: 11,
-            compactTime: true,
-            time: -1,
-            byteSource: static function (int $count) use (&$calls): string {
-                $calls++;
+        try {
+            $id = Uxid::generate(
+                prefix: 'usr',
+                size: Size::Medium,
+                randSize: 11,
+                compactTime: true,
+                time: -1,
+                byteSource: static function (int $count) use (&$calls): string {
+                    $calls++;
 
-                return str_repeat("\x00", $count);
-            },
-            from: 'alice@example.com',
-        );
+                    return str_repeat("\x00", $count);
+                },
+                from: 'alice@example.com',
+            );
+        } catch (\InvalidArgumentException $thrown) {
+            $refusal = $thrown->getMessage();
+        }
 
+        self::assertNull($refusal, 'generate refused the time with from');
         self::assertSame($plain, $id);
         self::assertSame(0, $calls);
     }

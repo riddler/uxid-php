@@ -155,21 +155,21 @@ bytes from `random_bytes` by default, and runs on PHP 8.3 or later on 64-bit
 builds. It is the Composer package `riddler/uxid`, under the PSR-4 namespace
 `Riddler\Uxid` over `src/`.
 
-The tree on `main` today holds the package scaffold and the generation of
-time-based and deterministic ids: `composer.json` and `composer.lock`;
-`src/`, with the `Uxid` class and its `generate` method, the `Size`,
-`LetterCase` and
-`ErrorCode` enums and `UxidException`; the gate (`mise.toml`, the PHPUnit,
-PHPStan and PHP-CS-Fixer configuration, `scripts/`, and the tests under
-`tests/`), `.gitattributes`, `LICENSE` and
-`CHANGELOG.md` with the fragment rule in `changelog.d/README.md`, CI and
-the release workflow (`.github/workflows/ci.yml` and `release.yml`), beside
-these agent instructions, the wurk manifest (`.claude/wurk.json`), the
-Claude Code settings (`.claude/settings.json`), the tracker files under
-`.beads/` and a `.gitignore`. Decoding, the validity
-checks, the monotonic generator and the vendored corpus arrive with later
-changes; until they do, the sentences in this file about the
-1.0.0 package and its corpus describe the target, not the current tree.
+The tree on `main` today holds the package scaffold, the generation of
+time-based and deterministic ids, decoding and the validity checks:
+`composer.json` and `composer.lock`; `src/`, with the `Uxid` class and its
+`generate`, `decode`, `isValid` and `isDeterministic` methods, the
+`Decoded` and `Invalid` results, the `Size`, `LetterCase`, `ErrorCode` and
+`DecodeError` enums and `UxidException`; the gate (`mise.toml`, the
+PHPUnit, PHPStan and PHP-CS-Fixer configuration, `scripts/`, and the tests
+under `tests/`), `.gitattributes`, `LICENSE` and `CHANGELOG.md` with the
+fragment rule in `changelog.d/README.md`, CI and the release workflow
+(`.github/workflows/ci.yml` and `release.yml`), beside these agent
+instructions, the wurk manifest (`.claude/wurk.json`), the Claude Code
+settings (`.claude/settings.json`), the tracker files under `.beads/` and a
+`.gitignore`. The monotonic generator and the vendored corpus arrive with
+later changes; until they do, the sentences in this file about the 1.0.0
+package and its corpus describe the target, not the current tree.
 
 - **The package is `riddler/uxid`.** Version 1.0.0 is its first release on
   Packagist (ruled by the operator, 2026-10-21).
