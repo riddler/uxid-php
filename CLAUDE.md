@@ -91,9 +91,11 @@ the prep - the version bump (the `VERSION` constant of the `Uxid` class in
 each version from its tag) and the changelog promotion - lands through the
 rows above; once it is merged to `origin/main`, the conductor or the session
 that owns the release bead tags that merged commit with the new version
-(`vX.Y.Z`) and pushes the tag. The README's `composer require` line, once the
-README carries one, names a caret constraint (`^1.0`), not an exact version,
-so a prep inside one major version leaves it as it is. An agent or a session
+(`vX.Y.Z`) and pushes the tag. The README's `composer require` line names a
+caret constraint (`^1.0`), not an exact version, so a prep inside one major
+version leaves it as it is. A prep that starts a new major version changes
+that constraint in `README.md` by hand in the same prep (the manifest's
+`release.readme_pin` is false, so no tool does it). An agent or a session
 never publishes to Packagist by hand: Packagist reads the new version from
 the pushed tag through the GitHub integration, and the release workflow
 (`.github/workflows/release.yml`) checks the tag against `src/Uxid.php`,
@@ -109,7 +111,7 @@ behind and which re-run can go green.
 
 Packagist publishes without any credential this repository holds: this
 repository has no repository secret, no workflow reads one, and none is
-created; nobody runs `gh secret` against it. The first publish has a
+created; an agent or a session never runs `gh secret` against it. The first publish has a
 prerequisite that is the operator's own step in a console no agent opens:
 signing in to packagist.org, submitting this repository (which claims the
 vendor name `riddler`) and connecting the GitHub integration, before the
@@ -145,19 +147,20 @@ Also avoid `bd edit`, which opens `$EDITOR` and blocks. Use
 
 ## What this project is
 
-`uxid` for PHP. Version 1.0.0, the package this repository is being built
-into, makes prefixed, K-sortable, Stripe-style identifiers a person can read,
-copy and route back to their resource, wire-compatible with the Elixir
-reference `uxid` and checked against its conformance corpus. It covers
+`uxid` for PHP makes prefixed, K-sortable, Stripe-style identifiers a person
+can read, copy and route back to their resource, wire-compatible with the
+Elixir reference `uxid` and checked against its conformance corpus. It covers
 generation (random, deterministic and monotonic), decoding and the validity
 checks; it has no runtime dependency beyond `ext-random`, takes its random
 bytes from `random_bytes` by default, and runs on PHP 8.3 or later on 64-bit
-builds. It is the Composer package `riddler/uxid`, under the PSR-4 namespace
-`Riddler\Uxid` over `src/`.
+builds. `composer.json` names it the Composer package `riddler/uxid`, under
+the PSR-4 namespace `Riddler\Uxid` over `src/`. No version is released yet:
+1.0.0 will be the first, and until its tag is pushed and Packagist lists it,
+the `composer require` line in the README installs nothing.
 
-The tree on `main` today holds the package scaffold, the generation of
-time-based, deterministic and monotonic ids, decoding and the validity
-checks: `composer.json` and `composer.lock`; `src/`, with the `Uxid` class
+The tree on `main` today holds the package, its documentation and its gate:
+`README.md`, the user reference, and `docs/wire-format.md`, a pointer to the
+reference spec at the tag the corpus names; `composer.json` and `composer.lock`; `src/`, with the `Uxid` class
 and its `generate`, `decode`, `isValid` and `isDeterministic` methods, the
 `Monotonic` generator and its `DrawSource` interface, the `Decoded` and
 `Invalid` results, the `Size`, `LetterCase`, `ErrorCode` and `DecodeError`
@@ -172,8 +175,8 @@ settings (`.claude/settings.json`), the tracker files under `.beads/` and a
 for byte with `conformance/SOURCE.json` recording its repo, tag, commit and
 corpus hash.
 
-- **The package is `riddler/uxid`.** Version 1.0.0 is its first release on
-  Packagist (ruled by the operator, 2026-10-21).
+- **The package is `riddler/uxid`.** Version 1.0.0 will be its first release
+  on Packagist (ruled by the operator, 2026-10-21).
 - **The corpus is the arbiter.** `conformance/` holds the corpus vendored
   from uxid-ex at the tag `v2.10.0`, its tag, commit and hash recorded in
   `conformance/SOURCE.json`. The vendored files are never edited, and every
@@ -181,8 +184,8 @@ corpus hash.
   against uxid-ex with its evidence, never skipped or worked round here. An
   answer the corpus does not fix follows uxid-ex's spec at that tag.
 
-`README.md`, which a later change adds, is the user reference; `CHANGELOG.md`
-records each release.
+`README.md` is the user reference, and its basic-usage block is run by a test;
+`CHANGELOG.md` records each release.
 
 ## Build & Test
 
@@ -209,8 +212,7 @@ the PHP-CS-Fixer check (a dry run that fails on any file it would change),
 PHPStan at level max over `src/`, `tests/` and `scripts/`, and the PHPUnit
 tests with pcov line coverage of `src/` at a 90 percent minimum
 (`scripts/check-coverage.php` reads the Clover report, and fails a report
-that measured no line). While `src/` holds no PHP file the tests run without
-a coverage report and the gate says the minimum is not applied. The
+that measured no line). The
 conformance corpus check, `gate:corpus`, runs after PHPStan and before the
 coverage step: it recomputes the corpus hash and each case count from the
 vendored files and runs every case with no skip list

@@ -7,7 +7,7 @@ declare(strict_types=1);
 // Usage: php scripts/check-coverage.php <clover.xml> <minimum percent>
 //
 // PHPUnit writes the Clover report; this reads the project's statement
-// totals from it. The gate runs it only once src/ holds a PHP file, and a
+// totals from it (one statement per executable line, which is how pcov counts). The gate runs it only once src/ holds a PHP file, and a
 // report that measured no line fails, so the minimum cannot be met by
 // measuring nothing.
 
@@ -36,12 +36,12 @@ $statements = (int) $metrics['statements'];
 $covered = (int) $metrics['coveredstatements'];
 
 if ($statements === 0) {
-    fwrite(STDERR, "the report measured no line in src/: is the coverage driver loaded?\n");
+    fwrite(STDERR, "the report measured no statement in src/: is the coverage driver loaded?\n");
     exit(1);
 }
 
 $percent = 100.0 * $covered / $statements;
-printf("src/ line coverage: %d of %d lines, %.2f percent (minimum %.2f)\n", $covered, $statements, $percent, $minimum);
+printf("src/ coverage: %d of %d statements, %.2f percent (minimum %.2f)\n", $covered, $statements, $percent, $minimum);
 
 if ($percent < $minimum) {
     fwrite(STDERR, "line coverage is under the minimum\n");

@@ -1,5 +1,5 @@
 # The archive Composer installs from (a `git archive` of a tag) ships the
-# library and its metadata only: src/, composer.json, LICENSE, README.md and
+# library and its metadata only: src/, docs/, composer.json, LICENSE, README.md and
 # CHANGELOG.md. Everything below stays in the repository and out of the
 # archive: the tests, the corpus, CI, the tool configuration and the agent
 # and tracker files.
