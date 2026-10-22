@@ -26,12 +26,11 @@ namespace Riddler\Uxid;
 final class Uxid
 {
     /**
-     * The package version. It names no released version until the first
-     * release sets it; the release workflow checks a tag against it and
-     * refuses any value that is not a plain MAJOR.MINOR.PATCH version, so
-     * this pre-release placeholder can never be tagged as a release.
+     * The package version, a plain MAJOR.MINOR.PATCH release version. The
+     * release workflow accepts a tag only when it is `v` followed by this
+     * value at the tagged commit.
      */
-    public const string VERSION = '0.0.0-dev';
+    public const string VERSION = '1.0.0';
 
     /** The latest time a standard time field holds: 2^48 - 1 milliseconds. */
     private const int MAX_TIME = 281474976710655;
