@@ -1,0 +1,85 @@
+# mise config for uxid-php: the toolchain and the gate tasks.
+#
+#   scripts/install-toolchain.sh   provision the toolchain below (runs mise install)
+#   mise run gate:loop             inner loop: PHPStan and the PHPUnit tests
+#   mise run gate                  full gate, the advancement gate
+#
+# PHP 8.5 and Composer 2 are pinned here. mise builds PHP from source through
+# the vfox-php plugin; scripts/install-toolchain.sh sets the build's configure
+# options and names what the build needs, then runs `mise install`, and the
+# postinstall below adds the pcov extension the coverage step loads.
+# Composer is the release phar from GitHub.
+#
+# composer.json declares "php": "^8.3", the oldest PHP the package supports,
+# with config.platform.php 8.3 so composer.lock resolves for that floor, while
+# the PHP that runs the gate is this one. The gate prints `php -v` first so
+# its log names that PHP.
+
+[tools]
+"github:composer/composer" = { version = "2.10.3", asset_pattern = "composer.phar", bin = "composer" }
+"vfox:mise-plugins/vfox-php" = { version = "8.5.12", postinstall = "pecl install pcov" }
+
+[tasks."gate:php"]
+description = "Print the PHP and Composer the gate runs on; fail unless pcov loads"
+run = '''
+set -eu
+php -v
+composer --version
+php -d extension=pcov -r 'exit(extension_loaded("pcov") ? 0 : 1);' || {
+  echo "the pcov extension does not load into this PHP: run mise exec -- pecl install pcov" >&2
+  exit 1
+}
+'''
+
+[tasks."gate:validate"]
+description = "composer validate in strict mode, then install the locked dependencies"
+run = [
+  "composer validate --strict",
+  "composer install --no-interaction --no-progress",
+]
+
+[tasks."gate:format"]
+description = "Fail when PHP-CS-Fixer would change any file (a dry run)"
+run = "vendor/bin/php-cs-fixer check --diff"
+
+[tasks."gate:phpstan"]
+description = "PHPStan at level max over src/, tests/ and scripts/"
+run = "vendor/bin/phpstan analyse --no-progress"
+
+[tasks."gate:test"]
+description = "The PHPUnit tests"
+run = "vendor/bin/phpunit"
+
+[tasks."gate:coverage"]
+description = "The PHPUnit tests with pcov, failing under 90 percent of the lines in src/"
+run = '''
+set -eu
+rm -rf build/coverage
+[ -d src ] || { echo "src/ is missing" >&2; exit 1; }
+if [ -z "$(find src -name '*.php' -type f)" ]; then
+  # PHPUnit refuses a coverage run whose source filter matches no file, so
+  # until src/ holds one the tests run without it, with pcov still loaded.
+  echo "src/ holds no PHP file yet: no line to measure, so the 90 percent minimum is not applied"
+  php -d extension=pcov -d pcov.enabled=1 vendor/bin/phpunit
+  exit 0
+fi
+php -d extension=pcov -d pcov.enabled=1 -d pcov.directory=src vendor/bin/phpunit --coverage-clover build/coverage/clover.xml
+php scripts/check-coverage.php build/coverage/clover.xml 90
+'''
+
+[tasks."gate:loop"]
+description = "Inner loop: PHPStan and the PHPUnit tests"
+run = [
+  { task = "gate:phpstan" },
+  { task = "gate:test" },
+]
+
+[tasks.gate]
+description = "Full gate"
+run = [
+  { task = "gate:php" },
+  { task = "gate:validate" },
+  { task = "gate:format" },
+  { task = "gate:phpstan" },
+  { task = "gate:coverage" },
+]

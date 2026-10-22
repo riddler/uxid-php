@@ -1,0 +1,22 @@
+# The archive Composer installs from (a `git archive` of a tag) ships the
+# library and its metadata only: src/, composer.json, LICENSE, README.md and
+# CHANGELOG.md. Everything below stays in the repository and out of the
+# archive: the tests, the corpus, CI, the tool configuration and the agent
+# and tracker files.
+/.beads export-ignore
+/.claude export-ignore
+/.github export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/.php-cs-fixer.dist.php export-ignore
+/AGENTS.md export-ignore
+/CLAUDE.md export-ignore
+/changelog.d export-ignore
+/composer.lock export-ignore
+/conformance export-ignore
+/mise.toml export-ignore
+/phpstan.neon.dist export-ignore
+/phpunit.xml.dist export-ignore
+/scripts export-ignore
+/src/.gitkeep export-ignore
+/tests export-ignore

@@ -1,0 +1,42 @@
+{
+    "name": "riddler/uxid",
+    "description": "Prefixed, K-sortable, Stripe-style identifiers, wire-compatible with the Elixir uxid package",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["id", "identifier", "uxid", "k-sortable"],
+    "homepage": "https://github.com/riddler/uxid-php",
+    "authors": [
+        {
+            "name": "John Thornton"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/riddler/uxid-php/issues",
+        "source": "https://github.com/riddler/uxid-php"
+    },
+    "require": {
+        "php": "^8.3",
+        "ext-random": "*"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "phpstan/phpstan": "^2.3",
+        "phpunit/phpunit": "^12.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Riddler\\Uxid\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Riddler\\Uxid\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "platform": {
+            "php": "8.3.0"
+        },
+        "sort-packages": true
+    }
+}

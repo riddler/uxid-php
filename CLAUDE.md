@@ -154,12 +154,15 @@ bytes from `random_bytes` by default, and runs on PHP 8.3 or later on 64-bit
 builds. It is the Composer package `riddler/uxid`, under the PSR-4 namespace
 `Riddler\Uxid` over `src/`.
 
-The tree on `main` today holds only these agent instructions, the wurk
-manifest (`.claude/wurk.json`), the Claude Code settings
-(`.claude/settings.json`), the tracker files under `.beads/` and a
-`.gitignore`. The library, `composer.json`, the gate tasks, CI, the release
-workflow and the vendored corpus arrive with later changes; until they do,
-the sentences in this file about the 1.0.0 package, its corpus, its gate and
+The tree on `main` today holds the package scaffold and no library code:
+`composer.json` and `composer.lock`, an empty `src/`, the gate (`mise.toml`,
+the PHPUnit, PHPStan and PHP-CS-Fixer configuration, `scripts/` and a test
+of the runtime requirements under `tests/`), `.gitattributes`, `LICENSE` and
+`CHANGELOG.md`, beside these agent instructions, the wurk manifest
+(`.claude/wurk.json`), the Claude Code settings (`.claude/settings.json`),
+the tracker files under `.beads/` and a `.gitignore`. The library, CI, the
+release workflow and the vendored corpus arrive with later changes; until
+they do, the sentences in this file about the 1.0.0 package, its corpus and
 its workflows describe the target, not the current tree.
 
 - **The package is `riddler/uxid`.** Version 1.0.0 is its first release on
@@ -171,25 +174,38 @@ its workflows describe the target, not the current tree.
   against uxid-ex with its evidence, never skipped or worked round here. An
   answer the corpus does not fix follows uxid-ex's spec at that tag.
 
-`README.md`, which a later change adds, is the user reference; `CHANGELOG.md`,
-which the scaffold adds, records each release.
+`README.md`, which a later change adds, is the user reference; `CHANGELOG.md`
+records each release.
 
 ## Build & Test
 
-The gate tasks live in `mise.toml`, which the scaffold adds; on a tree without
-it these commands do not run yet.
+The gate tasks live in `mise.toml`.
 
 ```bash
-mise install            # PHP, Composer and the tools mise.toml pins
-mise run gate:loop      # inner loop
-mise run gate           # full gate
+scripts/install-toolchain.sh   # PHP, Composer and pcov, through mise install
+mise run gate:loop             # inner loop
+mise run gate                  # full gate
 ```
 
-Once the change that adds the gate tasks lands, the full gate will print
-`php -v` first and then run `composer validate --strict`, the PHP-CS-Fixer
-check (a dry run that fails on any file it would change), PHPStan at level
-max, the PHPUnit tests with pcov line coverage at 90 percent, and the
-conformance corpus check once the corpus is vendored.
+mise builds PHP from source (the vfox-php plugin), and the plugin reads its
+configure options from the environment, so `scripts/install-toolchain.sh`
+sets them and then runs `mise install`; its header names what the build
+needs (a C compiler, autoconf, bison 3, re2c, pkg-config, libxml2 and
+OpenSSL; on macOS from Homebrew, where the system bison is too old). A bare
+`mise install` builds PHP with the plugin's own options, which need more
+libraries. After PHP installs, mise runs `pecl install pcov`, the coverage
+driver the gate loads.
+
+The full gate prints `php -v` and `composer --version` first and fails unless
+pcov loads, then runs `composer validate --strict` and `composer install`,
+the PHP-CS-Fixer check (a dry run that fails on any file it would change),
+PHPStan at level max over `src/`, `tests/` and `scripts/`, and the PHPUnit
+tests with pcov line coverage of `src/` at a 90 percent minimum
+(`scripts/check-coverage.php` reads the Clover report, and fails a report
+that measured no line). While `src/` holds no PHP file the tests run without
+a coverage report and the gate says the minimum is not applied. The
+conformance corpus check joins the gate when the corpus is vendored. The
+inner loop, `mise run gate:loop`, is PHPStan and the PHPUnit tests.
 
 The gate runs on the PHP `mise.toml` pins (PHP 8.5). The toolchain floor is
 declared separately: `"php": "^8.3"` in `composer.json`, with
