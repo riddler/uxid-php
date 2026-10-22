@@ -156,8 +156,9 @@ builds. It is the Composer package `riddler/uxid`, under the PSR-4 namespace
 `Riddler\Uxid` over `src/`.
 
 The tree on `main` today holds the package scaffold and the generation of
-time-based ids: `composer.json` and `composer.lock`; `src/`, with the
-`Uxid` class and its `generate` method, the `Size`, `LetterCase` and
+time-based and deterministic ids: `composer.json` and `composer.lock`;
+`src/`, with the `Uxid` class and its `generate` method, the `Size`,
+`LetterCase` and
 `ErrorCode` enums and `UxidException`; the gate (`mise.toml`, the PHPUnit,
 PHPStan and PHP-CS-Fixer configuration, `scripts/`, and the tests under
 `tests/`), `.gitattributes`, `LICENSE` and
@@ -165,7 +166,7 @@ PHPStan and PHP-CS-Fixer configuration, `scripts/`, and the tests under
 the release workflow (`.github/workflows/ci.yml` and `release.yml`), beside
 these agent instructions, the wurk manifest (`.claude/wurk.json`), the
 Claude Code settings (`.claude/settings.json`), the tracker files under
-`.beads/` and a `.gitignore`. Deterministic ids, decoding, the validity
+`.beads/` and a `.gitignore`. Decoding, the validity
 checks, the monotonic generator and the vendored corpus arrive with later
 changes; until they do, the sentences in this file about the
 1.0.0 package and its corpus describe the target, not the current tree.
