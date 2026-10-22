@@ -1,0 +1,108 @@
+{
+  "wurk": 1,
+
+  "beads": {
+    "prefix": "uxphp",
+    "sync": "dolthub",
+    "topology": "beads",
+    "areas": {
+      "labels": [
+        "area:codec",
+        "area:monotonic",
+        "area:conformance",
+        "area:docs",
+        "area:build"
+      ],
+      "lands_alone": ["area:build"],
+      "always_batchable": ["upstream"]
+    }
+  },
+
+  "forge": {
+    "kind": "github",
+    "labels": {}
+  },
+
+  "gate": {
+    "full": ["mise", "run", "gate"],
+    "loop": ["mise", "run", "gate:loop"],
+    "build_paths": [
+      "src/",
+      "tests/",
+      "scripts/",
+      "composer.json",
+      "composer.lock",
+      "mise.toml",
+      "phpunit.xml.dist",
+      "phpunit.xml",
+      "phpstan.neon.dist",
+      "phpstan.neon",
+      ".php-cs-fixer.dist.php",
+      ".php-cs-fixer.php",
+      ".gitattributes"
+    ],
+    "also_gated_paths": ["conformance/", "README.md"],
+    "moving_files": [
+      "mise.toml",
+      "composer.json",
+      "phpunit.xml.dist",
+      "phpstan.neon.dist",
+      ".php-cs-fixer.dist.php"
+    ],
+    "sabotage": {
+      "test_roots": ["tests/"],
+      "test_pattern": "\\bpublic function test\\w*\\s*\\(",
+      "exempt_prefixes": [],
+      "note_forms": ["comment"]
+    },
+    "project_level_skips": [],
+    "not_applicable_skips": []
+  },
+
+  "parallelism": {
+    "model": "worktree-per-issue",
+    "worktrees_dir": "../uxid-php-worktrees",
+    "trust": ["mise", "trust", "{path}"],
+    "warm_clone": [],
+    "warm": [["mise", "exec", "--", "composer", "install", "--no-interaction", "--no-progress"]],
+    "repair_when": "composer.lock",
+    "repair": [["mise", "exec", "--", "composer", "install", "--no-interaction", "--no-progress"]],
+    "post_branch": []
+  },
+
+  "tmux": {
+    "session": "uxid-php",
+    "model": "opus"
+  },
+
+  "models": {
+    "direction": "fable"
+  },
+
+  "artifacts": {
+    "plans": "docs/plans",
+    "research": "docs/research",
+    "filename": "YYMMDD-[id-]kebab"
+  },
+
+  "commits": {
+    "style": "s-form",
+    "subject_under": 72,
+    "body_line_max": 72,
+    "total_lines_max": 40,
+    "trailer": {
+      "key": "Refs"
+    }
+  },
+
+  "changelog": {
+    "mode": "fragments",
+    "dir": "changelog.d"
+  },
+
+  "release": {
+    "kind": "packagist",
+    "version_file": "src/Uxid.php",
+    "readme_pin": false
+  }
+}
