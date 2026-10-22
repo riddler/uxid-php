@@ -156,20 +156,21 @@ builds. It is the Composer package `riddler/uxid`, under the PSR-4 namespace
 `Riddler\Uxid` over `src/`.
 
 The tree on `main` today holds the package scaffold, the generation of
-time-based and deterministic ids, decoding and the validity checks:
-`composer.json` and `composer.lock`; `src/`, with the `Uxid` class and its
-`generate`, `decode`, `isValid` and `isDeterministic` methods, the
-`Decoded` and `Invalid` results, the `Size`, `LetterCase`, `ErrorCode` and
-`DecodeError` enums and `UxidException`; the gate (`mise.toml`, the
+time-based, deterministic and monotonic ids, decoding and the validity
+checks: `composer.json` and `composer.lock`; `src/`, with the `Uxid` class
+and its `generate`, `decode`, `isValid` and `isDeterministic` methods, the
+`Monotonic` generator and its `DrawSource` interface, the `Decoded` and
+`Invalid` results, the `Size`, `LetterCase`, `ErrorCode` and `DecodeError`
+enums and `UxidException`; the gate (`mise.toml`, the
 PHPUnit, PHPStan and PHP-CS-Fixer configuration, `scripts/`, and the tests
 under `tests/`), `.gitattributes`, `LICENSE` and `CHANGELOG.md` with the
 fragment rule in `changelog.d/README.md`, CI and the release workflow
 (`.github/workflows/ci.yml` and `release.yml`), beside these agent
 instructions, the wurk manifest (`.claude/wurk.json`), the Claude Code
 settings (`.claude/settings.json`), the tracker files under `.beads/` and a
-`.gitignore`. The monotonic generator and the vendored corpus arrive with
-later changes; until they do, the sentences in this file about the 1.0.0
-package and its corpus describe the target, not the current tree.
+`.gitignore`. The vendored corpus arrives with a later change; until it
+does, the sentences in this file about the 1.0.0 package and its corpus
+describe the target, not the current tree.
 
 - **The package is `riddler/uxid`.** Version 1.0.0 is its first release on
   Packagist (ruled by the operator, 2026-10-21).
