@@ -154,9 +154,10 @@ generation (random, deterministic and monotonic), decoding and the validity
 checks; it has no runtime dependency beyond `ext-random`, takes its random
 bytes from `random_bytes` by default, and runs on PHP 8.3 or later on 64-bit
 builds. `composer.json` names it the Composer package `riddler/uxid`, under
-the PSR-4 namespace `Riddler\Uxid` over `src/`. No version is released yet:
-1.0.0 will be the first, and until its tag is pushed and Packagist lists it,
-the `composer require` line in the README installs nothing.
+the PSR-4 namespace `Riddler\Uxid` over `src/`. Version 1.0.0 is its first
+release. Packagist lists a version only once its tag is pushed and Packagist
+has read it, so until the tag `v1.0.0` is pushed the `composer require` line
+in the README installs nothing.
 
 The tree on `main` today holds the package, its documentation and its gate:
 `README.md`, the user reference, and `docs/wire-format.md`, a pointer to the
@@ -175,8 +176,8 @@ settings (`.claude/settings.json`), the tracker files under `.beads/` and a
 for byte with `conformance/SOURCE.json` recording its repo, tag, commit and
 corpus hash.
 
-- **The package is `riddler/uxid`.** Version 1.0.0 will be its first release
-  on Packagist (ruled by the operator, 2026-10-21).
+- **The package is `riddler/uxid`.** Version 1.0.0 is its first release on
+  Packagist (ruled by the operator, 2026-10-21).
 - **The corpus is the arbiter.** `conformance/` holds the corpus vendored
   from uxid-ex at the tag `v2.10.0`, its tag, commit and hash recorded in
   `conformance/SOURCE.json`. The vendored files are never edited, and every
