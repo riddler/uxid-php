@@ -23,7 +23,10 @@ name: Release
 #   default branch and the tag is `v` followed by the `VERSION` constant of
 #   the `Riddler\Uxid\Uxid` class at that commit (src/Uxid.php, read through
 #   Composer's autoloader with PHP itself, so a tag pushed before that file,
-#   that class or that constant exists stops here). It then reports what
+#   that class or that constant exists stops here), and that constant is a
+#   plain release version, MAJOR.MINOR.PATCH in digits only (so a
+#   pre-release placeholder such as `0.0.0-dev`, which the trigger's `*`
+#   would match, stops here too). It then reports what
 #   Packagist lists for the version, without failing on it: Packagist
 #   usually reads a new tag within a minute or two, so on most runs the
 #   version is already listed when this step runs. Then it runs the full
@@ -181,7 +184,9 @@ jobs:
       # (`composer install --no-dev`, which installs no package: the
       # runtime requirements are PHP and ext-random only). The check stops
       # unless src/Uxid.php exists, defines the class, the class defines a
-      # non-empty string VERSION, and the tag names it.
+      # string VERSION that is a plain MAJOR.MINOR.PATCH version (digits
+      # and two dots, nothing after), and the tag names it.
+      # tests/ReleaseVersionCheckTest.php runs this PHP script.
       - name: Check the tag names the version in src/Uxid.php
         id: version
         run: |
@@ -212,6 +217,9 @@ jobs:
           $version = constant("{$class}::VERSION");
           if (!is_string($version) || $version === '') {
               $fail("{$class}::VERSION is not a non-empty string");
+          }
+          if (preg_match('/^\d+\.\d+\.\d+$/D', $version) !== 1) {
+              $fail("{$class}::VERSION is {$version}, not a plain MAJOR.MINOR.PATCH release version");
           }
           echo $version, "\n";
           PHP

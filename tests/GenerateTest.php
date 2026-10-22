@@ -231,6 +231,22 @@ final class GenerateTest extends TestCase
         Uxid::generate(time: 1700000000000, byteSource: static fn(int $count): string => 'short');
     }
 
+    /**
+     * The closure is passed through reflection because its return type, an
+     * int, is not the string the parameter documents: this is the caller's
+     * untyped closure the check exists for.
+     */
+    # sabotage: replace the is_string check in draw with if (false) -> expectException failed: TypeError from strlen does not match the expected UnexpectedValueException
+    public function testAByteSourceReturningANonStringIsRefused(): void
+    {
+        $generate = new \ReflectionMethod(Uxid::class, 'generate');
+
+        $this->expectException(\UnexpectedValueException::class);
+        $this->expectExceptionMessage('must return a string');
+
+        $generate->invokeArgs(null, ['time' => 1700000000000, 'byteSource' => static fn(int $count): int => $count]);
+    }
+
     # sabotage: replace the $randSize < 0 check in generate with if (false) -> expectException failed: no InvalidArgumentException was thrown
     public function testANegativeRandSizeIsRefused(): void
     {
