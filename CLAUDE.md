@@ -155,16 +155,19 @@ bytes from `random_bytes` by default, and runs on PHP 8.3 or later on 64-bit
 builds. It is the Composer package `riddler/uxid`, under the PSR-4 namespace
 `Riddler\Uxid` over `src/`.
 
-The tree on `main` today holds the package scaffold and no library code:
-`composer.json` and `composer.lock`, an empty `src/`, the gate (`mise.toml`,
-the PHPUnit, PHPStan and PHP-CS-Fixer configuration, `scripts/` and a test
-of the runtime requirements under `tests/`), `.gitattributes`, `LICENSE` and
+The tree on `main` today holds the package scaffold and the generation of
+time-based ids: `composer.json` and `composer.lock`; `src/`, with the
+`Uxid` class and its `generate` method, the `Size`, `LetterCase` and
+`ErrorCode` enums and `UxidException`; the gate (`mise.toml`, the PHPUnit,
+PHPStan and PHP-CS-Fixer configuration, `scripts/`, and the tests under
+`tests/`), `.gitattributes`, `LICENSE` and
 `CHANGELOG.md` with the fragment rule in `changelog.d/README.md`, CI and
 the release workflow (`.github/workflows/ci.yml` and `release.yml`), beside
 these agent instructions, the wurk manifest (`.claude/wurk.json`), the
 Claude Code settings (`.claude/settings.json`), the tracker files under
-`.beads/` and a `.gitignore`. The library and the vendored corpus arrive
-with later changes; until they do, the sentences in this file about the
+`.beads/` and a `.gitignore`. Deterministic ids, decoding, the validity
+checks, the monotonic generator and the vendored corpus arrive with later
+changes; until they do, the sentences in this file about the
 1.0.0 package and its corpus describe the target, not the current tree.
 
 - **The package is `riddler/uxid`.** Version 1.0.0 is its first release on
