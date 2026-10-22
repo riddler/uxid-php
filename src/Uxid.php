@@ -14,6 +14,11 @@ namespace Riddler\Uxid;
  * the prefix and that string, so the same input always gives the same id. A
  * deterministic id is exactly as guessable as its input.
  *
+ * {@see decode()} reads an id back to a {@see Decoded} result, or to an
+ * {@see Invalid} one naming why a string is not an id, and never throws on
+ * malformed input; {@see isValid()} and {@see isDeterministic()} answer the
+ * same question as a boolean.
+ *
  * Every method is static and the class holds no state; it cannot be
  * instantiated. It needs a 64-bit PHP build, since the time field is 48 bits
  * wide.
@@ -33,6 +38,9 @@ final class Uxid
 
     /** The low 40 bits of the time, the part a compact time field holds. */
     private const int COMPACT_MASK = 1099511627775;
+
+    /** How far ahead of the decoder's clock a compact time may be: one day, in milliseconds. */
+    private const int ONE_DAY = 86400000;
 
     /** The widest random field at any size, in bytes. */
     private const int MAX_RAND_BYTES = 10;
@@ -66,15 +74,14 @@ final class Uxid
      * of the prefix, a zero byte, `$from`, a zero byte and one byte holding
      * `count`, as `count` characters; `count` is the size's number of hash
      * characters (9, 13, 17, 21 or 25), so the body has a standard body's
-     * length. The same
-     * prefix, `$from` and size always give the same id, and the letter case
-     * and the delimiter are not part of the hash input. There is no compact
-     * deterministic form. A deterministic id is exactly as guessable as its
-     * input. `$from` and the prefix are hashed as the bytes given, with no
-     * validation: pass text as UTF-8. The empty string is an input like any
-     * other. The size is still parsed and the delimiter still checked, but
-     * `$time`, the clock, `$compactTime`, `$randSize` and `$byteSource` are
-     * not read.
+     * length. The same prefix, `$from` and size always give the same id, and
+     * the letter case and the delimiter are not part of the hash input. There
+     * is no compact deterministic form. A deterministic id is exactly as
+     * guessable as its input. `$from` and the prefix are hashed as the bytes
+     * given, with no validation: pass text as UTF-8. The empty string is an
+     * input like any other. The size is still parsed and the delimiter still
+     * checked, but `$time`, the clock, `$compactTime`, `$randSize` and
+     * `$byteSource` are not read.
      *
      *     Uxid::generate(prefix: 'usr', from: 'alice@example.com'); // usr_zcvt7epac0t1ebcsjfyf7cwz25
      *
@@ -117,9 +124,7 @@ final class Uxid
             $size = Size::parse($size);
         }
 
-        if ($delimiter === '') {
-            throw new \InvalidArgumentException('The delimiter must be a non-empty string.');
-        }
+        self::checkDelimiter($delimiter);
 
         if ($from !== null) {
             if ($rand !== null) {
@@ -183,6 +188,233 @@ final class Uxid
         $body .= self::encodeBytes($rand, $alphabet);
 
         return $prefix === '' ? $body : $prefix . $delimiter . $body;
+    }
+
+    /**
+     * Reads a string as an id: a {@see Decoded} for a well-formed id, an
+     * {@see Invalid} naming the reason for any other string. It never throws
+     * on the string, however long or malformed; what it is given is a value
+     * to classify.
+     *
+     *     Uxid::decode('usr_01hf7yat0004h1');        // Decoded: prefix usr, Size::Small, time 1700000000000
+     *     Uxid::decode('usr_');                      // Invalid: DecodeError::Empty
+     *     Uxid::decode('cus-01hf7yat00', delimiter: '-');
+     *
+     * The body is everything after the last delimiter, and the prefix
+     * everything before it; a string with no delimiter is a body with no
+     * prefix (null). The body is refused for the first rule it breaks, in
+     * this order: it is empty; its length in bytes is not 10, 13, 14, 18, 21,
+     * 22, 24 or 26; a byte is not a Crockford Base32 symbol in either case
+     * (no reading substitutions, no hyphens). The length gives the size and
+     * the time form; 10 and 18 are always read as standard time, so a
+     * compact XSmall or compact Medium id decodes as standard, with a time
+     * read from its first 10 characters. A body starting with `z` or `Z` is
+     * deterministic and carries no time.
+     *
+     * A compact body carries only the low 40 bits of its time, and the high
+     * bits come from `$clock`: the clock's bits above bit 40 are combined
+     * with the 40 decoded bits, and when that is more than one day
+     * (86400000 ms) ahead of the clock, one window of 2^40 ms is subtracted,
+     * with no floor at zero, so a clock in the first window can give a
+     * negative time. The time is exact while the id and the clock fall in
+     * the same 2^40 ms window (about 34.8 years) and the id is no more than
+     * one day ahead of the clock. A fixed clock, such as
+     * `fn(): int => 1700000000000`, makes a compact time's reading
+     * reproducible.
+     *
+     * @param string               $id        the string to read
+     * @param string               $delimiter the delimiter the id was generated with, `_` unless given; never empty
+     * @param (callable(): int)|null $clock   the decoder's clock, returning the time in milliseconds since the Unix epoch, 0 to 2^48 - 1; null, the default, reads the system clock; it is called once for a compact time-based body and not at all otherwise
+     *
+     * @return Decoded|Invalid what the string says, or why it is not an id
+     *
+     * @throws \InvalidArgumentException the delimiter is empty
+     * @throws \UnexpectedValueException the clock returned a value that is not an integer from 0 to 2^48 - 1
+     * @throws \LogicException           the PHP build is not 64-bit
+     */
+    public static function decode(string $id, string $delimiter = '_', ?callable $clock = null): Decoded|Invalid
+    {
+        self::requireSixtyFourBit(\PHP_INT_SIZE);
+        self::checkDelimiter($delimiter);
+
+        [$prefix, $body] = self::split($id, $delimiter);
+        $form = self::form($body);
+        if ($form instanceof DecodeError) {
+            return new Invalid($form);
+        }
+
+        [$size, $compact] = $form;
+        $lower = strtolower($body);
+        if ($lower[0] === 'z') {
+            return new Decoded($prefix, $size, $compact, true, null);
+        }
+
+        $time = $compact
+            ? self::compactTime(self::readInteger($lower, 0, 8), $clock)
+            : ((self::readInteger($lower, 0, 1) & 7) << 45) | self::readInteger($lower, 1, 9);
+
+        return new Decoded($prefix, $size, $compact, false, $time);
+    }
+
+    /**
+     * Answers whether a string is a well-formed id under a delimiter, one
+     * {@see decode()} would decode, and, given a required prefix, whether it
+     * carries exactly that prefix. This checks structure, not origin: any
+     * well-formed string passes. It reads no clock and never throws on the
+     * string.
+     *
+     *     Uxid::isValid('usr_01hf7yat0004h1');                         // true
+     *     Uxid::isValid('usr_01hf7yat0004h1', requiredPrefix: 'cus');  // false
+     *
+     * @param string      $id             the string to check
+     * @param string      $delimiter      the delimiter the id was generated with, `_` unless given; never empty
+     * @param string|null $requiredPrefix the prefix the id must carry, compared byte for byte; null or the empty string, the default, accepts any prefix or none; a string with no delimiter has no prefix, so it fails any other required prefix
+     *
+     * @return bool true when the string is well formed and carries the required prefix
+     *
+     * @throws \InvalidArgumentException the delimiter is empty
+     */
+    public static function isValid(string $id, string $delimiter = '_', ?string $requiredPrefix = null): bool
+    {
+        self::checkDelimiter($delimiter);
+
+        [$prefix, $body] = self::split($id, $delimiter);
+
+        return !self::form($body) instanceof DecodeError
+            && ($requiredPrefix === null || $requiredPrefix === '' || $prefix === $requiredPrefix);
+    }
+
+    /**
+     * Answers whether a string is a well-formed deterministic id under a
+     * delimiter: one {@see decode()} would decode whose body starts with the
+     * marker `z` or `Z`. A malformed string is not one, whatever its first
+     * body character. It reads no clock and never throws on the string.
+     *
+     *     Uxid::isDeterministic('usr_zcvt7epac0t1ebcsjfyf7cwz25'); // true
+     *     Uxid::isDeterministic('usr_01hf7yat0004h1');             // false
+     *
+     * @param string $id        the string to check
+     * @param string $delimiter the delimiter the id was generated with, `_` unless given; never empty
+     *
+     * @return bool true when the string is well formed and deterministic
+     *
+     * @throws \InvalidArgumentException the delimiter is empty
+     */
+    public static function isDeterministic(string $id, string $delimiter = '_'): bool
+    {
+        self::checkDelimiter($delimiter);
+
+        [, $body] = self::split($id, $delimiter);
+
+        return !self::form($body) instanceof DecodeError && ($body[0] === 'z' || $body[0] === 'Z');
+    }
+
+    /**
+     * Refuses an empty delimiter.
+     *
+     * @throws \InvalidArgumentException when the delimiter is empty
+     *
+     * @phpstan-assert non-empty-string $delimiter
+     */
+    private static function checkDelimiter(string $delimiter): void
+    {
+        if ($delimiter === '') {
+            throw new \InvalidArgumentException('The delimiter must be a non-empty string.');
+        }
+    }
+
+    /**
+     * Splits a string into its prefix and body at the last delimiter, the
+     * string read left to right as non-overlapping delimiters; the prefix is
+     * null when there is no delimiter.
+     *
+     * @param non-empty-string $delimiter
+     *
+     * @return array{?string, string} the prefix and the body
+     */
+    private static function split(string $id, string $delimiter): array
+    {
+        $parts = explode($delimiter, $id);
+        $body = array_pop($parts);
+        if ($parts === []) {
+            return [null, $body];
+        }
+
+        return [implode($delimiter, $parts), $body];
+    }
+
+    /**
+     * The size and time form a well-formed body's length gives, or the first
+     * rule the body breaks, in the order empty, length in bytes, alphabet.
+     *
+     * @return array{Size, bool}|DecodeError
+     */
+    private static function form(string $body): array|DecodeError
+    {
+        if ($body === '') {
+            return DecodeError::Empty;
+        }
+
+        $length = \strlen($body);
+        $form = match ($length) {
+            10 => [Size::XSmall, false],
+            13 => [Size::Small, true],
+            14 => [Size::Small, false],
+            18 => [Size::Medium, false],
+            21 => [Size::Large, true],
+            22 => [Size::Large, false],
+            24 => [Size::XLarge, true],
+            26 => [Size::XLarge, false],
+            default => DecodeError::InvalidLength,
+        };
+        if ($form instanceof DecodeError) {
+            return $form;
+        }
+
+        if (strspn($body, self::LOWER_ALPHABET . self::UPPER_ALPHABET) !== $length) {
+            return DecodeError::InvalidCharacter;
+        }
+
+        return $form;
+    }
+
+    /**
+     * Reads `$chars` lower-case symbols from `$offset` as one integer, 5 bits
+     * per symbol, most significant first. The caller has checked that every
+     * symbol is in the alphabet.
+     */
+    private static function readInteger(string $lower, int $offset, int $chars): int
+    {
+        $value = 0;
+        for ($index = $offset; $index < $offset + $chars; $index++) {
+            $value = ($value << 5) | (int) strpos(self::LOWER_ALPHABET, $lower[$index]);
+        }
+
+        return $value;
+    }
+
+    /**
+     * The full time of a compact body: its low 40 bits under the clock's
+     * high bits, less one 2^40 ms window when that lands more than one day
+     * ahead of the clock, with no floor at zero.
+     *
+     * @param (callable(): mixed)|null $clock
+     *
+     * @throws \UnexpectedValueException when the clock returns a value that is not an integer from 0 to 2^48 - 1
+     */
+    private static function compactTime(int $low, ?callable $clock): int
+    {
+        $now = $clock === null ? self::now() : $clock();
+        if (!\is_int($now) || $now < 0 || $now > self::MAX_TIME) {
+            throw new \UnexpectedValueException(
+                'The clock must return an integer from 0 to 2^48 - 1 milliseconds, got '
+                    . (\is_int($now) ? (string) $now : get_debug_type($now)) . '.',
+            );
+        }
+
+        $time = ($now & ~self::COMPACT_MASK) | $low;
+
+        return $time - $now > self::ONE_DAY ? $time - (self::COMPACT_MASK + 1) : $time;
     }
 
     /**
