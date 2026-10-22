@@ -115,8 +115,8 @@ signing in to packagist.org, submitting this repository (which claims the
 vendor name `riddler`) and connecting the GitHub integration, before the
 first tag is pushed. Until then a pushed tag publishes nothing. Merging the
 prep follows this file's merge row, and nothing else this file reserves for
-the operator changes. A prep is cut only on a green full gate, which will
-include the conformance corpus check.
+the operator changes. A prep is cut only on a green full gate, which includes
+the conformance corpus check.
 
 This repository keeps no decision records (`docs/adr`). A release or gating
 decision is recorded here, in the authority table and the Release preps
@@ -124,10 +124,10 @@ paragraphs, and in the header of the workflow it governs; a change a user of
 the API could notice is a changelog fragment (Conventions, below). The ID
 format itself is not decided here: it is uxid-ex's wire-format spec,
 `guides/wire-format.md` in https://github.com/riddler/uxid-ex, read at the
-tag the vendored corpus names (`conformance/SOURCE.json`, once the corpus is
-vendored). That this repository keeps no decision records was decided by the
-conductor under a standing consent, 2026-10-21; a future API decision may
-start a `docs/adr` directory.
+tag the vendored corpus names (`conformance/SOURCE.json`). That this
+repository keeps no decision records was decided by the conductor under a
+standing consent, 2026-10-21; a future API decision may start a `docs/adr`
+directory.
 
 Widening this section is a decision for the operator to make and record here.
 An agent may draft the change; it does not adopt it.
@@ -168,14 +168,14 @@ fragment rule in `changelog.d/README.md`, CI and the release workflow
 (`.github/workflows/ci.yml` and `release.yml`), beside these agent
 instructions, the wurk manifest (`.claude/wurk.json`), the Claude Code
 settings (`.claude/settings.json`), the tracker files under `.beads/` and a
-`.gitignore`. The vendored corpus arrives with a later change; until it
-does, the sentences in this file about the 1.0.0 package and its corpus
-describe the target, not the current tree.
+`.gitignore`; and `conformance/`, the uxid-ex conformance corpus vendored byte
+for byte with `conformance/SOURCE.json` recording its repo, tag, commit and
+corpus hash.
 
 - **The package is `riddler/uxid`.** Version 1.0.0 is its first release on
   Packagist (ruled by the operator, 2026-10-21).
-- **The corpus is the arbiter.** `conformance/` will hold the corpus
-  vendored from uxid-ex at a release tag, its tag, commit and hash recorded in
+- **The corpus is the arbiter.** `conformance/` holds the corpus vendored
+  from uxid-ex at the tag `v2.10.0`, its tag, commit and hash recorded in
   `conformance/SOURCE.json`. The vendored files are never edited, and every
   case passes with no skip list: a case this port cannot pass is reported
   against uxid-ex with its evidence, never skipped or worked round here. An
@@ -211,8 +211,10 @@ tests with pcov line coverage of `src/` at a 90 percent minimum
 (`scripts/check-coverage.php` reads the Clover report, and fails a report
 that measured no line). While `src/` holds no PHP file the tests run without
 a coverage report and the gate says the minimum is not applied. The
-conformance corpus check joins the gate when the corpus is vendored. The
-inner loop, `mise run gate:loop`, is PHPStan and the PHPUnit tests.
+conformance corpus check, `gate:corpus`, runs after PHPStan and before the
+coverage step: it recomputes the corpus hash and each case count from the
+vendored files and runs every case with no skip list
+(`vendor/bin/phpunit --group corpus`). The inner loop, `mise run gate:loop`, is PHPStan and the PHPUnit tests.
 
 The gate runs on the PHP `mise.toml` pins (PHP 8.5). The toolchain floor is
 declared separately: `"php": "^8.3"` in `composer.json`, with

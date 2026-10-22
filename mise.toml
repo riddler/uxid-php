@@ -55,6 +55,10 @@ run = "vendor/bin/phpstan analyse --no-progress"
 description = "The PHPUnit tests"
 run = "vendor/bin/phpunit"
 
+[tasks."gate:corpus"]
+description = "The conformance corpus check: the hash, the case counts and every case"
+run = "vendor/bin/phpunit --group corpus"
+
 [tasks."gate:coverage"]
 description = "The PHPUnit tests with pcov, failing under 90 percent of the lines in src/"
 run = '''
@@ -86,5 +90,6 @@ run = [
   { task = "gate:validate" },
   { task = "gate:format" },
   { task = "gate:phpstan" },
+  { task = "gate:corpus" },
   { task = "gate:coverage" },
 ]
