@@ -18,7 +18,9 @@ final class Uxid
 {
     /**
      * The package version. It names no released version until the first
-     * release sets it; the release workflow checks a tag against it.
+     * release sets it; the release workflow checks a tag against it and
+     * refuses any value that is not a plain MAJOR.MINOR.PATCH version, so
+     * this pre-release placeholder can never be tagged as a release.
      */
     public const string VERSION = '0.0.0-dev';
 
@@ -72,7 +74,7 @@ final class Uxid
      *
      * @throws UxidException             the request is one the wire format refuses: `rand_size_too_large`, `rand_width_mismatch` or `compact_time_out_of_range` (see {@see ErrorCode})
      * @throws \InvalidArgumentException the size string is no size's spelling, the delimiter is empty, the random field width is negative, or the time (or the system clock) is outside 0 to 2^48 - 1
-     * @throws \UnexpectedValueException the byte source returned a string of another length than it was asked for
+     * @throws \UnexpectedValueException the byte source returned a value that is not a string, or a string of another length than it was asked for
      * @throws \LogicException           the PHP build is not 64-bit
      */
     public static function generate(
@@ -188,9 +190,13 @@ final class Uxid
      * Draws `$count` bytes from the caller's source, or from `random_bytes`
      * when there is none. An empty field draws nothing.
      *
-     * @param (callable(int): string)|null $byteSource
+     * The source is typed as returning anything, since a caller's untyped
+     * closure may return a value that is not a string; that is refused like
+     * a string of the wrong length.
      *
-     * @throws \UnexpectedValueException when the source returns another number of bytes
+     * @param (callable(int): mixed)|null $byteSource
+     *
+     * @throws \UnexpectedValueException when the source returns a value that is not a string, or another number of bytes
      */
     private static function draw(?callable $byteSource, int $count): string
     {
@@ -203,6 +209,12 @@ final class Uxid
         }
 
         $bytes = $byteSource($count);
+        if (!\is_string($bytes)) {
+            throw new \UnexpectedValueException(
+                'The byte source returned ' . get_debug_type($bytes) . ' when asked for ' . $count . ' bytes; it must return a string.',
+            );
+        }
+
         if (\strlen($bytes) !== $count) {
             throw new \UnexpectedValueException(
                 'The byte source returned ' . \strlen($bytes) . ' bytes when asked for ' . $count . '.',
