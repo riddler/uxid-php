@@ -1,0 +1,7 @@
+parameters:
+    level: max
+    paths:
+        - src
+        - tests
+        - scripts
+    tmpDir: .phpstan.cache
