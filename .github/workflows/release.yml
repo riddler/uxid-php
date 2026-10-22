@@ -1,8 +1,9 @@
 name: Release
 
 # Checks a version tag and confirms Packagist lists it. This workflow
-# publishes nothing, and it holds no token, because a PHP package's version
-# is its git tag: Packagist reads the package name from composer.json and
+# publishes nothing, and it holds no secret and no registry credential
+# (Credentials, below), because a PHP package's version is its git tag:
+# Packagist reads the package name from composer.json and
 # each version from a tag, through the GitHub integration on the package's
 # Packagist page, when the tag is pushed. So the version exists on Packagist
 # once Packagist has read the tag, whatever this workflow does. What the
