@@ -1,0 +1,192 @@
+name: CI
+
+# Two jobs, on every push to main, every pull request into main and a
+# manual dispatch.
+#
+# - `gate` runs the full quality gate, the command an agent must have green
+#   before committing, on the PHP minor version mise.toml pins (8.5).
+# - `tests` runs the PHPUnit tests on PHP 8.3, 8.4 and 8.5: 8.3 is the floor
+#   composer.json declares ("php": "^8.3"), and composer.lock resolves for
+#   it (config.platform.php 8.3.0), so the 8.3 job installs the committed
+#   lock as it stands.
+#
+# The step list lives in one place, mise.toml's tasks: `gate` runs the
+# `gate` task (the command .claude/wurk.json names as gate.full) and `tests`
+# runs three of its parts. PHP and Composer come from
+# shivammathur/setup-php, not from mise: mise.toml builds PHP from source,
+# which a contributor's machine does once and a CI job would do on every
+# run. So mise is installed as the task runner only. Every tool mise.toml
+# pins is disabled for mise (MISE_DISABLE_TOOLS, read out of mise.toml) and
+# mise never installs a tool before a task (MISE_TASK_RUN_AUTO_INSTALL is
+# false), so the tasks run the php and composer setup-php put on PATH.
+# setup-php installs the latest patch release of the PHP minor version it
+# is given, so these jobs run that patch, not necessarily the patch
+# mise.toml names; Composer is the exact version mise.toml pins. Each job's
+# first task prints the PHP and Composer it runs on.
+#
+# Every action in both jobs is pinned to a full commit SHA, with its version
+# in a trailing comment, as every action in release.yml is.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Read-only. Nothing here writes to the repository, asks for an OIDC token,
+# reads a secret or authenticates to a registry. The one credential any step
+# sees is GitHub's automatic per-job GITHUB_TOKEN, limited to the
+# permission below: the checkout fetches with it (and does not keep it in
+# the checkout's git config), and setup-php hands it to Composer for
+# Composer's downloads from GitHub.
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request supersedes the run in
+# progress.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Full quality gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    env:
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # The PHP minor version and the Composer version mise.toml pins, read
+      # with Python's TOML reader (on the runner already), so a pin moved in
+      # mise.toml moves here with no edit to this file. The same read names
+      # every tool mise.toml pins, and those are disabled for mise.
+      - name: Read the toolchain mise.toml pins
+        id: pins
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' | tee -a "$GITHUB_OUTPUT"
+          import tomllib
+          with open("mise.toml", "rb") as f:
+              tools = tomllib.load(f)["tools"]
+          php = tools["vfox:mise-plugins/vfox-php"]["version"]
+          composer = tools["github:composer/composer"]["version"]
+          print("php=" + ".".join(php.split(".")[:2]))
+          print("composer=" + composer)
+          print("disable=" + ",".join(tools))
+          PY
+          echo "MISE_DISABLE_TOOLS=$(sed -n 's/^disable=//p' "$GITHUB_OUTPUT" | tail -n 1)" >> "$GITHUB_ENV"
+
+      # pcov is the coverage driver the gate's coverage task reads; the
+      # extensions are the ones the package and the gate's tools require
+      # (composer.lock), iconv among them for the mbstring polyfill.
+      # fail-fast stops the step when an extension cannot be set up.
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        env:
+          fail-fast: true
+        with:
+          php-version: ${{ steps.pins.outputs.php }}
+          extensions: ctype, dom, filter, iconv, mbstring, tokenizer, xml, xmlwriter
+          coverage: pcov
+          tools: composer:${{ steps.pins.outputs.composer }}
+
+      # mise as the task runner only: no `mise install`, no cache, and no
+      # token handed to mise.
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.8.2
+          install: false
+          cache: false
+          github_token: ""
+
+      # The command is read out of .claude/wurk.json (gate.full) rather than
+      # written here, so the gate CI runs and the gate an agent must have
+      # green are one definition. It is read and executed inside the step
+      # rather than interpolated into `run:`, so a repository file never
+      # reaches the shell as expression text.
+      - name: Full quality gate
+        run: |
+          set -euo pipefail
+          mapfile -t cmd < <(jq -er '.gate.full[]' .claude/wurk.json)
+          test "${#cmd[@]}" -gt 0 || { echo "::error::gate.full is empty" >&2; exit 1; }
+          echo "gate command (.claude/wurk.json gate.full): ${cmd[*]}"
+          "${cmd[@]}"
+
+      # A gate that rewrites a tracked file or leaves an untracked file that
+      # is not ignored passes locally only because the change is then
+      # committed; here it is a failure.
+      - name: Check the gate left the checkout clean
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --short
+            echo "::error::the gate left changed or untracked files" >&2
+            exit 1
+          fi
+
+  tests:
+    name: Tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.3", "8.4", "8.5"]
+
+    env:
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # The Composer version and the tools to disable, as in `gate`; the PHP
+      # version is this job's matrix entry.
+      - name: Read the toolchain mise.toml pins
+        id: pins
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' | tee -a "$GITHUB_OUTPUT"
+          import tomllib
+          with open("mise.toml", "rb") as f:
+              tools = tomllib.load(f)["tools"]
+          print("composer=" + tools["github:composer/composer"]["version"])
+          print("disable=" + ",".join(tools))
+          PY
+          echo "MISE_DISABLE_TOOLS=$(sed -n 's/^disable=//p' "$GITHUB_OUTPUT" | tail -n 1)" >> "$GITHUB_ENV"
+
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        env:
+          fail-fast: true
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: ctype, dom, filter, iconv, mbstring, tokenizer, xml, xmlwriter
+          coverage: pcov
+          tools: composer:${{ steps.pins.outputs.composer }}
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.8.2
+          install: false
+          cache: false
+          github_token: ""
+
+      # mise.toml's tasks: print the PHP and Composer and check pcov loads,
+      # validate composer.json and install the locked dependencies, then the
+      # PHPUnit tests.
+      - name: Print the toolchain
+        run: mise run gate:php
+
+      - name: Validate and install
+        run: mise run gate:validate
+
+      - name: Tests
+        run: mise run gate:test

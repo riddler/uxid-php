@@ -14,6 +14,11 @@
 # with config.platform.php 8.3 so composer.lock resolves for that floor, while
 # the PHP that runs the gate is this one. The gate prints `php -v` first so
 # its log names that PHP.
+#
+# CI and the release workflow (.github/workflows/) run these same tasks, with
+# PHP, Composer and pcov from shivammathur/setup-php and every tool below
+# disabled for mise, so a gate step belongs in a task here, not in a
+# workflow.
 
 [tools]
 "github:composer/composer" = { version = "2.10.3", asset_pattern = "composer.phar", bin = "composer" }
