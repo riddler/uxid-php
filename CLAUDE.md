@@ -51,7 +51,7 @@ should do the work, stop before the irreversible step, and report.
 | `bd close <id>` | never for a mirrored bead whose other half is not merged to its own repo's `origin/main`; a mirrored bead whose other half has ALSO landed may be closed by the campaign conductor under a consent naming this exception, both halves together, each verified against its remote; otherwise the operator's call | for a bead whose description carries a `mirrors:` line while its other half is unlanded, campaign consent included |
 | `bd dolt push` | bead state changed locally **and** the git side of the same change has already reached `origin`; inside a campaign, the conductor pushes (atomically across the campaign's trackers) | as a way to publish beads for work that is not on `origin/main` yet |
 | a release prep (a version bump and a changelog promotion) and its tag | a release bead a campaign consent names, or the operator names in their own words; the tag once that prep is merged to `origin/main`, naming its version at the merged commit | on any other bead or on `main`; the tag before the prep is on `origin/main` |
-| a release, a version on Packagist | never by hand - Packagist reads the package name from `composer.json` and each version from a git tag, so a version exists when its tag is pushed, after the release prep merges (the row above), and Packagist reads it; an agent or a session never moves or deletes a pushed tag, never asks Packagist to update, and never touches the Packagist settings (the package page, its maintainers and the GitHub integration); no Packagist token exists, and none is created | always - a failed workflow is re-run from its Actions page, never worked round by hand |
+| a release, a version on Packagist | never by hand - Packagist reads the package name from `composer.json` and each version from a git tag, so a version exists when its tag is pushed, after the release prep merges (the row above), and Packagist reads it; an agent or a session never moves or deletes a pushed tag, never asks Packagist to update, and never touches the Packagist settings (the package page, its maintainers and the GitHub integration); no Packagist token exists, and none is created; the release workflow, `.github/workflows/release.yml`, publishes nothing: on the tag push it checks the tag and confirms Packagist lists the version | always - a failed workflow is re-run from its Actions page, never worked round by hand |
 
 The organizing principle: the human gate belongs where an action stops being
 reversible. A commit on a per-bead branch is undone with
@@ -96,15 +96,16 @@ README carries one, names a caret constraint (`^1.0`), not an exact version,
 so a prep inside one major version leaves it as it is. An agent or a session
 never publishes to Packagist by hand: Packagist reads the new version from
 the pushed tag through the GitHub integration, and the release workflow
-(`.github/workflows/release.yml`, which a later change adds) checks the tag
-against `src/Uxid.php` and then polls Packagist's metadata until the version
-is listed. A failed workflow is re-run from its Actions page, never worked
-round by hand. If Packagist has not picked the version up when the poll
+(`.github/workflows/release.yml`) checks the tag against `src/Uxid.php`,
+runs the full gate on the tagged commit and then polls Packagist's metadata
+until the version is listed at that commit. A failed workflow is re-run
+from its Actions page, never worked round by hand. If Packagist has not picked the version up when the poll
 gives out, the remedy is the operator's Update click on the package page on
-packagist.org, then a re-run of the workflow. A re-run cannot repair a tag
-the workflow's check refuses: Packagist has already read that version, the
-tag is never moved or deleted, and the fix is a new version. Until that
-workflow is on `main`, nothing checks a tag here.
+packagist.org, then a re-run of the workflow's failed job. A re-run cannot
+repair a tag the workflow's check refuses: Packagist has already read that
+version, the tag is never moved or deleted, and the fix is a new version.
+The workflow's header says what each job checks, what a failure leaves
+behind and which re-run can go green.
 
 Packagist publishes without any credential this repository holds: this
 repository has no repository secret, no workflow reads one, and none is
@@ -158,12 +159,13 @@ The tree on `main` today holds the package scaffold and no library code:
 `composer.json` and `composer.lock`, an empty `src/`, the gate (`mise.toml`,
 the PHPUnit, PHPStan and PHP-CS-Fixer configuration, `scripts/` and a test
 of the runtime requirements under `tests/`), `.gitattributes`, `LICENSE` and
-`CHANGELOG.md`, beside these agent instructions, the wurk manifest
-(`.claude/wurk.json`), the Claude Code settings (`.claude/settings.json`),
-the tracker files under `.beads/` and a `.gitignore`. The library, CI, the
-release workflow and the vendored corpus arrive with later changes; until
-they do, the sentences in this file about the 1.0.0 package, its corpus and
-its workflows describe the target, not the current tree.
+`CHANGELOG.md` with the fragment rule in `changelog.d/README.md`, CI and
+the release workflow (`.github/workflows/ci.yml` and `release.yml`), beside
+these agent instructions, the wurk manifest (`.claude/wurk.json`), the
+Claude Code settings (`.claude/settings.json`), the tracker files under
+`.beads/` and a `.gitignore`. The library and the vendored corpus arrive
+with later changes; until they do, the sentences in this file about the
+1.0.0 package and its corpus describe the target, not the current tree.
 
 - **The package is `riddler/uxid`.** Version 1.0.0 is its first release on
   Packagist (ruled by the operator, 2026-10-21).
@@ -210,8 +212,17 @@ inner loop, `mise run gate:loop`, is PHPStan and the PHPUnit tests.
 The gate runs on the PHP `mise.toml` pins (PHP 8.5). The toolchain floor is
 declared separately: `"php": "^8.3"` in `composer.json`, with
 `config.platform.php` set to 8.3 so Composer resolves only dependencies that
-install on 8.3. CI, once it lands, proves the floor by running the tests on
-PHP 8.3, 8.4 and 8.5; the gate interpreter alone does not.
+install on 8.3. CI proves the floor by running the tests on PHP 8.3, 8.4
+and 8.5; the gate interpreter alone does not.
+
+CI (`.github/workflows/ci.yml`, on pushes to `main` and pull requests) runs
+the same `mise.toml` tasks: the full gate on PHP 8.5, and `gate:php`,
+`gate:validate` and `gate:test` on PHP 8.3, 8.4 and 8.5. There PHP,
+Composer and pcov come from `shivammathur/setup-php` rather than from the
+source build, and mise is the task runner only, with every tool
+`mise.toml` pins disabled for it, so the step list has one home: a step
+added to a `mise.toml` task runs on a contributor's machine and in CI
+alike. The release workflow runs the full gate the same way.
 
 ### This repo's own gate rules
 
@@ -282,7 +293,7 @@ satellite conventions rather than inventing a second set.
 - **PHP 8.3 or later** (`"php": "^8.3"`), on 64-bit builds, with Composer,
   `composer validate --strict`, PHP-CS-Fixer, PHPStan at level max and
   PHPUnit 11 or later in the gate, and the tests run on PHP 8.3, 8.4 and 8.5
-  in CI once CI lands (ruled by the operator, 2026-10-21). The coverage bar is
+  in CI (ruled by the operator, 2026-10-21). The coverage bar is
   90 percent of lines (decided by the conductor under a standing consent,
   2026-10-21).
 - **Tests use PHPUnit** under `tests/`, in their own PSR-4 namespace

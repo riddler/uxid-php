@@ -1,0 +1,354 @@
+name: Release
+
+# Checks a version tag and confirms Packagist lists it. This workflow
+# publishes nothing, and it holds no token, because a PHP package's version
+# is its git tag: Packagist reads the package name from composer.json and
+# each version from a tag, through the GitHub integration on the package's
+# Packagist page, when the tag is pushed. So the version exists on Packagist
+# once Packagist has read the tag, whatever this workflow does. What the
+# workflow adds is the check that the tag is a release (on the default
+# branch, naming the version the code states, green on the full gate) and
+# the confirmation that Packagist lists it at the tagged commit.
+#
+# It runs on the push of a tag shaped `v*.*.*` and on nothing else - no
+# branch push, no pull request, no manual dispatch. A tag cannot be filtered
+# by branch in the trigger, so the first check below is that the tagged
+# commit is on the default branch.
+#
+# Two jobs.
+#
+# - `verify` (contents: read, and no other permission) checks out the
+#   tagged commit (github.sha) and stops, red, unless the commit is on the
+#   default branch and the tag is `v` followed by the `VERSION` constant of
+#   the `Riddler\Uxid\Uxid` class at that commit (src/Uxid.php, read through
+#   Composer's autoloader with PHP itself, so a tag pushed before that file,
+#   that class or that constant exists stops here). It then reports what
+#   Packagist lists for the version, without failing on it: Packagist
+#   usually reads a new tag within a minute or two, so on most runs the
+#   version is already listed when this step runs. Then it runs the full
+#   quality gate, the same command and the same toolchain as ci.yml's
+#   `gate` job, and stops, red, if the gate leaves the checkout changed.
+# - `registry` (contents: read, and no other permission; it checks out
+#   nothing and uses no action) starts only when `verify` succeeded. It
+#   polls Packagist's metadata for the package
+#   (https://repo.packagist.org/p2/<package>.json, which answers 404 until
+#   the package is on Packagist) every 30 seconds, for up to 20 minutes,
+#   until the version is listed. The bound is the 15 minutes for which that
+#   file is served from Packagist's cache (Cache-Control: max-age=900) plus
+#   the minute or two Packagist takes to read a tag. When the version is
+#   listed at the tagged commit it prints the version's Packagist address
+#   and goes green. It stops, red, when Packagist lists the version at a
+#   different commit, or when the 20 minutes run out.
+#
+# Every action this workflow uses is pinned to a full commit SHA, with its
+# version in a trailing comment; `registry` uses none. ci.yml pins its
+# actions the same way.
+#
+# Credentials. No step reads a secret, and none exists in this repository;
+# nothing authenticates to Packagist, whose metadata is public. The one
+# credential any step sees is GitHub's automatic per-job GITHUB_TOKEN,
+# limited to contents: read: in `verify` the checkout fetches with it (and
+# does not keep it in the checkout's git config) and setup-php hands it to
+# Composer for Composer's downloads from GitHub. No token is handed to mise.
+#
+# What a failure leaves behind. Nothing this workflow does publishes or
+# changes anything, so a red run leaves the tag and Packagist as they were.
+# It does not undo a version: if `verify` is red because the tagged commit
+# itself is wrong (not on the default branch, a tag that names another
+# version than the code, a red gate), Packagist may already list that
+# version. A pushed tag is never moved or deleted, and Packagist would keep
+# serving what it already read. The remedy for a broken version is a new
+# patch version, through a new release prep and the tag that names it.
+#
+# Re-runs. A run is re-run from its page in the Actions tab, never worked
+# round by hand.
+# - A failure the tagged commit causes (the checks above, a red gate) fails
+#   the same way on every re-run.
+# - A failure for a registry or network reason can go green on a re-run:
+#   a download in `verify` that failed on the runner (re-run all jobs), or a
+#   `registry` poll that ran out of time (re-run the failed jobs, which
+#   re-runs `registry` alone, with the package, version and commit `verify`
+#   recorded). Packagist's answer is never a failure in `verify`.
+# - If `registry` ran out of time because Packagist has not read the tag
+#   (the package page on packagist.org does not show the version), the
+#   maintainer presses the Update button on that page, then re-runs the
+#   failed jobs. A 404 throughout means the package is not on Packagist yet:
+#   the maintainer submits the repository on packagist.org first.
+#
+# This file records the release decision for this repository, which keeps
+# no decision records (CLAUDE.md, "Agent authority in this repo": the
+# "Release preps" paragraph and the paragraph after it).
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+# The default for every job: contents: read, every other permission none.
+# Each job states its own permissions below. The tag already exists when
+# this runs, and nothing here creates or pushes one.
+permissions:
+  contents: read
+
+# One run per tag, and a run in progress is never cancelled.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify the tag and run the gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    # contents: read for the checkout and the default branch fetch.
+    permissions:
+      contents: read
+
+    env:
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+
+    # What `registry` polls for: the package name (composer.json), the
+    # version (the tag without its `v`) and the tagged commit.
+    outputs:
+      package: ${{ steps.version.outputs.package }}
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.branch.outputs.commit }}
+
+    steps:
+      # The tagged commit, by SHA. Full history: the ancestry check below
+      # walks it.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The default branch is read from the push event itself, never written
+      # here, so a renamed default branch needs no edit to this file.
+      - name: Fetch the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          test -n "$DEFAULT_BRANCH" || { echo "::error::the push event names no default branch" >&2; exit 1; }
+          git fetch --no-tags origin "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+
+      - name: Check the tagged commit is on the default branch
+        id: branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          commit="$(git rev-parse 'HEAD^{commit}')"
+          if ! git merge-base --is-ancestor "$commit" "origin/${DEFAULT_BRANCH}"; then
+            echo "::error::${GITHUB_REF_NAME} is on ${commit}, which is not on ${DEFAULT_BRANCH}" >&2
+            exit 1
+          fi
+          echo "${GITHUB_REF_NAME} is on ${commit}, which is on ${DEFAULT_BRANCH}"
+          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
+
+      # The PHP minor version and the Composer version mise.toml pins, and
+      # the tools to disable for mise, read as ci.yml's `gate` job reads them.
+      - name: Read the toolchain mise.toml pins
+        id: pins
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' | tee -a "$GITHUB_OUTPUT"
+          import tomllib
+          with open("mise.toml", "rb") as f:
+              tools = tomllib.load(f)["tools"]
+          php = tools["vfox:mise-plugins/vfox-php"]["version"]
+          composer = tools["github:composer/composer"]["version"]
+          print("php=" + ".".join(php.split(".")[:2]))
+          print("composer=" + composer)
+          print("disable=" + ",".join(tools))
+          PY
+          echo "MISE_DISABLE_TOOLS=$(sed -n 's/^disable=//p' "$GITHUB_OUTPUT" | tail -n 1)" >> "$GITHUB_ENV"
+
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        env:
+          fail-fast: true
+        with:
+          php-version: ${{ steps.pins.outputs.php }}
+          extensions: ctype, dom, filter, iconv, mbstring, tokenizer, xml, xmlwriter
+          coverage: pcov
+          tools: composer:${{ steps.pins.outputs.composer }}
+
+      # The version is the constant PHP itself reads from the class, loaded
+      # through the autoloader a consumer of the package gets
+      # (`composer install --no-dev`, which installs no package: the
+      # runtime requirements are PHP and ext-random only). The check stops
+      # unless src/Uxid.php exists, defines the class, the class defines a
+      # non-empty string VERSION, and the tag names it.
+      - name: Check the tag names the version in src/Uxid.php
+        id: version
+        run: |
+          set -euo pipefail
+          composer install --no-dev --no-interaction --no-progress
+          file_version="$(php <<'PHP'
+          <?php
+          $fail = static function (string $message): never {
+              fwrite(STDERR, "::error::{$message}; this tag is not a release\n");
+              exit(1);
+          };
+          $file = 'src/Uxid.php';
+          if (!is_file($file)) {
+              $fail("{$file} does not exist at the tagged commit, so there is no version to check the tag against");
+          }
+          require 'vendor/autoload.php';
+          $class = 'Riddler\\Uxid\\Uxid';
+          if (!class_exists($class)) {
+              $fail("the autoloader finds no class {$class}");
+          }
+          $loaded = (new ReflectionClass($class))->getFileName();
+          if ($loaded !== realpath($file)) {
+              $fail("{$class} loads from {$loaded}, not from {$file}");
+          }
+          if (!defined("{$class}::VERSION")) {
+              $fail("{$class} defines no VERSION constant");
+          }
+          $version = constant("{$class}::VERSION");
+          if (!is_string($version) || $version === '') {
+              $fail("{$class}::VERSION is not a non-empty string");
+          }
+          echo $version, "\n";
+          PHP
+          )"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$tag_version" != "$file_version" ]; then
+            echo "::error::${GITHUB_REF_NAME} names ${tag_version} but Riddler\\Uxid\\Uxid::VERSION at the tagged commit is ${file_version}; this tag is not a release" >&2
+            exit 1
+          fi
+          package="$(jq -er '.name' composer.json)"
+          echo "${GITHUB_REF_NAME} matches ${package} version ${file_version} in src/Uxid.php"
+          echo "package=${package}" >> "$GITHUB_OUTPUT"
+          echo "version=${file_version}" >> "$GITHUB_OUTPUT"
+
+      # A report, never a failure: Packagist reads the tag on its own, so it
+      # often lists the version before this step runs, and its answer here
+      # changes nothing this run does. `registry` is the step that waits for
+      # the listing. The metadata is in Composer's minified form, where each
+      # version entry carries only the fields that differ from the entry
+      # before it ("__unset" marks a field removed), so the entries are
+      # expanded before the version is looked up.
+      - name: Report what Packagist lists for this version
+        env:
+          PACKAGE: ${{ steps.version.outputs.package }}
+          VERSION: ${{ steps.version.outputs.version }}
+          COMMIT: ${{ steps.branch.outputs.commit }}
+        run: |
+          set -uo pipefail
+          body="$(mktemp)"
+          status="$(curl -sS --max-time 30 -A "${PACKAGE} release workflow (https://github.com/${GITHUB_REPOSITORY})" \
+            -o "$body" -w '%{http_code}' "https://repo.packagist.org/p2/${PACKAGE}.json")" || true
+          case "$status" in
+            404)
+              echo "Packagist lists no version of ${PACKAGE} (404): the package is not on Packagist yet, or Packagist's cached answer predates it" ;;
+            200)
+              listed="$(jq -r --arg pkg "$PACKAGE" --arg tag "$GITHUB_REF_NAME" --arg ver "$VERSION" '
+                reduce (.packages[$pkg] // [])[] as $e ({out: [], prev: {}};
+                  ((.prev + $e) | with_entries(select(.value != "__unset"))) as $cur
+                  | .out += [$cur] | .prev = $cur)
+                | .out | map(select(.version == $tag or .version == $ver)) | first
+                | if . == null then "absent" else "listed " + (.source.reference // .dist.reference // "none") end' "$body")" || listed="unreadable"
+              case "$listed" in
+                "listed ${COMMIT}")
+                  echo "Packagist already lists ${PACKAGE} ${GITHUB_REF_NAME} at ${COMMIT}, the tagged commit" ;;
+                listed*)
+                  echo "::warning::Packagist lists ${PACKAGE} ${GITHUB_REF_NAME} at ${listed#listed }, not at the tagged commit ${COMMIT}; the registry job fails on it" ;;
+                absent)
+                  echo "Packagist lists ${PACKAGE} but not ${GITHUB_REF_NAME} yet" ;;
+                *)
+                  echo "::warning::Packagist's metadata for ${PACKAGE} could not be read" ;;
+              esac ;;
+            *)
+              echo "::warning::Packagist answered ${status:-nothing} for ${PACKAGE}; not a failure here, registry polls again" ;;
+          esac
+          exit 0
+
+      # mise as the task runner only, as in ci.yml.
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.8.2
+          install: false
+          cache: false
+          github_token: ""
+
+      # The command .claude/wurk.json names as gate.full, read and executed
+      # inside the step, as ci.yml's `gate` job runs it.
+      - name: Full quality gate
+        run: |
+          set -euo pipefail
+          mapfile -t cmd < <(jq -er '.gate.full[]' .claude/wurk.json)
+          test "${#cmd[@]}" -gt 0 || { echo "::error::gate.full is empty" >&2; exit 1; }
+          echo "gate command (.claude/wurk.json gate.full): ${cmd[*]}"
+          "${cmd[@]}"
+
+      - name: Check the gate left the checkout clean
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --short
+            echo "::error::the gate left changed or untracked files" >&2
+            exit 1
+          fi
+
+  registry:
+    name: Confirm Packagist lists the version
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    # contents: read only, and nothing here uses it: this job checks out
+    # nothing and reads only Packagist's public metadata.
+    permissions:
+      contents: read
+
+    steps:
+      - name: Poll Packagist for the version
+        env:
+          PACKAGE: ${{ needs.verify.outputs.package }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          COMMIT: ${{ needs.verify.outputs.commit }}
+        run: |
+          set -uo pipefail
+          for value in "$PACKAGE" "$VERSION" "$COMMIT"; do
+            test -n "$value" || { echo "::error::verify recorded no package, version or commit" >&2; exit 1; }
+          done
+          url="https://repo.packagist.org/p2/${PACKAGE}.json"
+          page="https://packagist.org/packages/${PACKAGE}"
+          body="$(mktemp)"
+          deadline=$(( $(date +%s) + 20 * 60 ))
+          while :; do
+            status="$(curl -sS --max-time 30 -A "${PACKAGE} release workflow (https://github.com/${GITHUB_REPOSITORY})" \
+              -o "$body" -w '%{http_code}' "$url")" || true
+            if [ "$status" = 200 ]; then
+              listed="$(jq -r --arg pkg "$PACKAGE" --arg tag "$GITHUB_REF_NAME" --arg ver "$VERSION" '
+                reduce (.packages[$pkg] // [])[] as $e ({out: [], prev: {}};
+                  ((.prev + $e) | with_entries(select(.value != "__unset"))) as $cur
+                  | .out += [$cur] | .prev = $cur)
+                | .out | map(select(.version == $tag or .version == $ver)) | first
+                | if . == null then "absent" else "listed " + (.source.reference // .dist.reference // "none") end' "$body")" || listed="unreadable"
+              case "$listed" in
+                "listed ${COMMIT}")
+                  echo "Packagist lists ${PACKAGE} ${GITHUB_REF_NAME} at ${COMMIT}, the tagged commit"
+                  echo "${page}#${GITHUB_REF_NAME}"
+                  exit 0 ;;
+                listed*)
+                  echo "::error::Packagist lists ${PACKAGE} ${GITHUB_REF_NAME} at ${listed#listed }, not at the tagged commit ${COMMIT}. A pushed tag is never moved; the remedy for a broken version is a new patch version" >&2
+                  exit 1 ;;
+                absent)
+                  echo "$(date -u +%H:%M:%SZ) Packagist lists ${PACKAGE} but not ${GITHUB_REF_NAME} yet" ;;
+                *)
+                  echo "$(date -u +%H:%M:%SZ) Packagist's metadata for ${PACKAGE} could not be read" ;;
+              esac
+            else
+              echo "$(date -u +%H:%M:%SZ) Packagist answered ${status:-nothing} for ${PACKAGE}"
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Packagist did not list ${PACKAGE} ${GITHUB_REF_NAME} within 20 minutes. If ${page} does not show the version, press its Update button, then re-run this failed job; if Packagist answered 404 throughout, the package is not on Packagist yet and the repository is submitted there first" >&2
+              exit 1
+            fi
+            sleep 30
+          done

@@ -1,7 +1,11 @@
 #!/bin/sh
 # Installs the toolchain mise.toml pins: Composer, and PHP built from source.
 #
-# Usage: scripts/install-toolchain.sh   (from the repository root)
+# Usage: scripts/install-toolchain.sh [tool...]   (from the repository root)
+#
+# With no argument it installs the two tools this file names and nothing
+# else from the mise configuration in force (a global mise config may pin
+# more); arguments, when given, are passed to `mise install` instead.
 #
 # mise builds PHP from its source release through the vfox-php plugin, which
 # reads its configure options from this process's environment, so they are
@@ -16,14 +20,18 @@
 # The build needs a C compiler, autoconf, bison 3 or later, re2c, pkg-config,
 # libxml2 and OpenSSL. On macOS these come from Homebrew (bison, libxml2,
 # openssl@3, re2c, pkgconf); bison and libxml2 are keg-only there, and the
-# system bison is too old, so YACC names Homebrew's bison and the plugin adds
+# system bison is too old, so YACC names Homebrew's bison (under
+# HOMEBREW_PREFIX, or /opt/homebrew when that is unset) and the plugin adds
 # Homebrew's pkg-config paths itself. Elsewhere, set YACC to a bison 3 or
 # leave it unset to use the one on PATH.
 set -eu
 
-if [ -z "${YACC:-}" ] && [ -x /opt/homebrew/opt/bison/bin/bison ]; then
-  YACC=/opt/homebrew/opt/bison/bin/bison
-  export YACC
+if [ -z "${YACC:-}" ]; then
+  bison="${HOMEBREW_PREFIX:-/opt/homebrew}/opt/bison/bin/bison"
+  if [ -x "$bison" ]; then
+    YACC="$bison"
+    export YACC
+  fi
 fi
 
 # macOS keeps the iconv headers in the SDK, not under /usr/include.
@@ -35,4 +43,7 @@ fi
 PHP_CONFIGURE_OPTIONS="--disable-all --enable-ctype --enable-dom --enable-filter --enable-mbstring --disable-mbregex --enable-phar --enable-tokenizer --enable-xml --enable-xmlreader --enable-xmlwriter --enable-simplexml --enable-fileinfo --enable-posix --with-iconv${ICONV_DIR:+=$ICONV_DIR} --with-libxml --with-openssl --with-zlib --with-pear --without-pcre-jit"
 export PHP_CONFIGURE_OPTIONS
 
+if [ "$#" -eq 0 ]; then
+  set -- vfox:mise-plugins/vfox-php github:composer/composer
+fi
 exec mise install "$@"
