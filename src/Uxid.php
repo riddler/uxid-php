@@ -10,6 +10,10 @@ namespace Riddler\Uxid;
  * Crockford Base32 made of a millisecond time field and a random field, laid
  * out as uxid's wire-format specification defines.
  *
+ * Given a `from` string instead, it derives the body from a SHA-256 hash of
+ * the prefix and that string, so the same input always gives the same id. A
+ * deterministic id is exactly as guessable as its input.
+ *
  * Every method is static and the class holds no state; it cannot be
  * instantiated. It needs a 64-bit PHP build, since the time field is 48 bits
  * wide.
@@ -57,6 +61,23 @@ final class Uxid
      * reproduced exactly: it exists for test vectors, and an id built from
      * fixed bytes is only as unpredictable as those bytes.
      *
+     * With `$from` the id is deterministic: the body is the marker `z` (`Z` in
+     * upper case) and then the first `5 x count` bits of the SHA-256 digest
+     * of the prefix, a zero byte, `$from`, a zero byte and one byte holding
+     * `count`, as `count` characters; `count` is the size's number of hash
+     * characters (9, 13, 17, 21 or 25), so the body has a standard body's
+     * length. The same
+     * prefix, `$from` and size always give the same id, and the letter case
+     * and the delimiter are not part of the hash input. There is no compact
+     * deterministic form. A deterministic id is exactly as guessable as its
+     * input. `$from` and the prefix are hashed as the bytes given, with no
+     * validation: pass text as UTF-8. The empty string is an input like any
+     * other. The size is still parsed and the delimiter still checked, but
+     * `$time`, the clock, `$compactTime`, `$randSize` and `$byteSource` are
+     * not read.
+     *
+     *     Uxid::generate(prefix: 'usr', from: 'alice@example.com'); // usr_zcvt7epac0t1ebcsjfyf7cwz25
+     *
      * Lengths are counted in bytes: the prefix and the delimiter are byte
      * strings, written as given.
      *
@@ -69,10 +90,11 @@ final class Uxid
      * @param int|null                   $time        the time in milliseconds since the Unix epoch, 0 to 2^48 - 1; null, the default, reads the system clock at the call
      * @param string|null                $rand        fixed random bytes, exactly the random field's width, for reproducible test vectors; null, the default, draws them from the byte source
      * @param (callable(int): string)|null $byteSource a source of random bytes, called with a byte count and returning a string of exactly that many bytes; null, the default, is `random_bytes`; it is not called for an empty random field or when `$rand` is given
+     * @param string|null                $from        the input of a deterministic id, hashed as the bytes given; null, the default, makes a time-based id; refused with `$rand`
      *
      * @return string the id
      *
-     * @throws UxidException             the request is one the wire format refuses: `rand_size_too_large`, `rand_width_mismatch` or `compact_time_out_of_range` (see {@see ErrorCode})
+     * @throws UxidException             the request is one the wire format refuses: `rand_size_too_large`, `rand_width_mismatch`, `compact_time_out_of_range` or `rand_with_from` (see {@see ErrorCode})
      * @throws \InvalidArgumentException the size string is no size's spelling, the delimiter is empty, the random field width is negative, or the time (or the system clock) is outside 0 to 2^48 - 1
      * @throws \UnexpectedValueException the byte source returned a value that is not a string, or a string of another length than it was asked for
      * @throws \LogicException           the PHP build is not 64-bit
@@ -87,6 +109,7 @@ final class Uxid
         ?int $time = null,
         ?string $rand = null,
         ?callable $byteSource = null,
+        ?string $from = null,
     ): string {
         self::requireSixtyFourBit(\PHP_INT_SIZE);
 
@@ -96,6 +119,17 @@ final class Uxid
 
         if ($delimiter === '') {
             throw new \InvalidArgumentException('The delimiter must be a non-empty string.');
+        }
+
+        if ($from !== null) {
+            if ($rand !== null) {
+                throw new UxidException(
+                    ErrorCode::RandWithFrom,
+                    'Fixed random bytes cannot be combined with a deterministic body (from).',
+                );
+            }
+
+            return self::deterministic($prefix, $size, $case, $delimiter, $from);
         }
 
         $time ??= self::now();
@@ -222,6 +256,41 @@ final class Uxid
         }
 
         return $bytes;
+    }
+
+    /**
+     * The deterministic id: the marker, then the leading 5-bit groups of the
+     * SHA-256 hash of the prefix, a zero byte, the input, a zero byte and the
+     * hash character count as one byte.
+     */
+    private static function deterministic(string $prefix, Size $size, LetterCase $case, string $delimiter, string $from): string
+    {
+        $count = self::hashChars($size);
+        $digest = hash('sha256', $prefix . "\x00" . $from . "\x00" . \chr($count), true);
+        $alphabet = $case === LetterCase::Upper ? self::UPPER_ALPHABET : self::LOWER_ALPHABET;
+
+        $body = $alphabet[self::MARKER];
+        for ($group = 0; $group < $count; $group++) {
+            $bit = 5 * $group;
+            $window = (\ord($digest[$bit >> 3]) << 8) | \ord($digest[($bit >> 3) + 1]);
+            $body .= $alphabet[($window >> (11 - ($bit & 7))) & 31];
+        }
+
+        return $prefix === '' ? $body : $prefix . $delimiter . $body;
+    }
+
+    /**
+     * The number of hash characters in a deterministic body for a size.
+     */
+    private static function hashChars(Size $size): int
+    {
+        return match ($size) {
+            Size::XSmall => 9,
+            Size::Small => 13,
+            Size::Medium => 17,
+            Size::Large => 21,
+            Size::XLarge => 25,
+        };
     }
 
     /**
